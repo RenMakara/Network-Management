@@ -4,6 +4,7 @@ package com.example.network.infrastructure.adapter.in.web;
 import com.example.network.domain.model.ReputationCheckResult;
 import com.example.network.domain.model.VisitorIp;
 import com.example.network.domain.port.in.CheckReputationUseCase;
+import com.example.network.domain.port.out.GeoBlockRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * INFRASTRUCTURE — DDoSProtectionFilter (Input Adapter)
@@ -38,9 +40,9 @@ import java.io.IOException;
 @Slf4j
 public class DDoSProtectionFilter extends OncePerRequestFilter {
 
-    // Injected use case — actually implemented by ReputationService
     private final CheckReputationUseCase checkReputationUseCase;
-
+    private final GeoBlockRepository geoBlockRepository;
+    private final GeoIpService           geoIpService;
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -62,6 +64,14 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
             log.warn("[DDoS-Layer1] BLOCKED ip={} — reputation match — silent drop", ip);
             response.setStatus(HttpServletResponse.SC_NO_CONTENT); // 204
             return; // stop here — do NOT call chain.doFilter()
+        }
+
+        // Layer 3 — GeoBlocker
+        Optional<String> country = geoIpService.resolveCountry(rawIp);
+        if (country.isPresent() && geoBlockRepository.contains(country.get())) {
+            log.warn("[DDoS-L3] BLOCKED ip={} country={}", ip, country.get());
+            geoBlocked(response, country.get());
+            return;
         }
 
         // ── All checks passed — continue to next filter ────────────────────
@@ -89,5 +99,15 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
             return testIp.trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private void geoBlocked(HttpServletResponse r, String countryCode) throws IOException {
+        r.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403
+        r.setContentType("application/json");
+        r.getWriter().write("{\"blocked\":true,\"reason\":\"geo_blocked\",\"country\":\"" + countryCode + "\"}");
+    }
+
+    private void silentDrop(HttpServletResponse r) throws IOException {
+        r.setStatus(HttpServletResponse.SC_NO_CONTENT); // 204
     }
 }

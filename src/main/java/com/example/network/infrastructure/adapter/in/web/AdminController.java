@@ -1,5 +1,6 @@
 package com.example.network.infrastructure.adapter.in.web;
 
+import com.example.network.domain.port.out.GeoBlockRepository;
 import com.example.network.domain.port.out.ReputationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +25,11 @@ import java.util.Set;
 public class AdminController {
 
     private final ReputationRepository reputationRepository;
+    private final GeoBlockRepository geoBlockRepository;
 
-    /**
-     * View current reputation list + Redis key name.
-     * GET /admin/ddos/status
-     */
-    @GetMapping("/status")
-    public ResponseEntity<Map<String, Object>> status() {
+
+    @GetMapping("/geo")
+    public ResponseEntity<Map<String, Object>> geo() {
         Set<String> ips = reputationRepository.getAll();
         return ResponseEntity.ok(Map.of(
                 "redisKey",      "nm:ddos:reputation",
@@ -38,6 +37,32 @@ public class AdminController {
                 "totalIPs",      ips.size(),
                 "ips",           ips,
                 "howToCheck",    "Redis CLI: SMEMBERS nm:ddos:reputation"
+        ));
+    }
+
+    /**
+     * View current reputation list + Redis key name.
+     * GET /admin/ddos/status
+     */
+    @GetMapping("/status")
+    public ResponseEntity<Map<String, Object>> status() {
+        return ResponseEntity.ok(Map.of(
+                "layer1_reputation", Map.of(
+                        "redisKey", "nm:ddos:reputation",
+                        "count",    reputationRepository.getAll().size(),
+                        "ips",      reputationRepository.getAll()),
+//                "layer2_blocklist", Map.of(
+//                        "redisKey", "nm:ddos:blocklist",
+//                        "count",    blocklistRepository.getAll().size(),
+//                        "ips",      blocklistRepository.getAll()),
+                "layer3_geo", Map.of(
+                        "redisKey",  "nm:ddos:geo:blocked",
+                        "count",     geoBlockRepository.getAll().size(),
+                        "countries", geoBlockRepository.getAll())
+//                "layer4_bodySize", Map.of(
+//                        "redisKey", "nm:ddos:body:size:limit",
+//                        "maxBytes", bodySizePolicy.getMaxBytes(),
+//                        "maxMB",    bodySizePolicy.getMaxBytes() / 1_048_576.0)
         ));
     }
 
@@ -78,5 +103,24 @@ public class AdminController {
                 "redisCommand", "SREM nm:ddos:reputation " + ip,
                 "effect",       "Requests from this IP will now pass Layer 1"
         ));
+    }
+
+
+
+    // Layer 3 for blocking by country code
+
+    @PostMapping("/geo")
+    public ResponseEntity<Map<String, String>> addGeoBlock(@RequestBody Map<String, String> body) {
+        String code = body.get("countryCode");
+        geoBlockRepository.add(code);
+        return ResponseEntity.ok(Map.of(
+                "action", "added", "layer", "3-geo", "countryCode", code,
+                "effect", "Requests from " + code + " → HTTP 403 Forbidden"));
+    }
+
+    @DeleteMapping("/geo/{code}")
+    public ResponseEntity<Map<String, String>> removeGeoBlock(@PathVariable String code) {
+        geoBlockRepository.remove(code);
+        return ResponseEntity.ok(Map.of("action", "removed", "layer", "3-geo", "countryCode", code));
     }
 }

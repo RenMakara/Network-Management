@@ -21,4 +21,28 @@ public final class RedisKeys {
      * Type:       SET
      */
     public static final String DDOS_REPUTATION = "nm:ddos:reputation";
+
+    /**
+     * Layer 2 — IP Blocklist (operator-managed permanent blocks)
+     * Redis SET of IPs manually blocked by the operator.
+     * Written by: admin API only. Audit trail in PostgreSQL (production).
+     * Type: SET  TTL: none (permanent until operator removes)
+     */
+    public static final String DDOS_BLOCKLIST = "nm:ddos:blocklist";
+
+    /**
+     * Layer 3 — GeoBlocker
+     * Redis SET of ISO 3166-1 alpha-2 country codes blocked by the operator.
+     * e.g. "CN", "RU", "KP"
+     * Type: SET  TTL: none
+     */
+    public static final String DDOS_GEO_BLOCKED = "nm:ddos:geo:blocked";
+//
+//    /**
+//     * Layer 4 — Request body size limit
+//     * Redis STRING storing the max allowed Content-Length in bytes.
+//     * Default: 1,048,576 (1MB). Operator can change at runtime.
+//     * Type: STRING  TTL: none
+//     */
+//    public static final String DDOS_BODY_SIZE_LIMIT = "nm:ddos:body:size:limit";
 }
