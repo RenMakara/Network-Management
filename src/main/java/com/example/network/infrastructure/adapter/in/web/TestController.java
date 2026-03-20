@@ -22,7 +22,7 @@ public class TestController {
         return ResponseEntity.ok(Map.of(
                 "status",  "PASS",
                 "message", "Request passed all DDoS layers",
-                "layer1",  "IP Reputation — CLEAN"
+                "layer1",  "IP — CLEAN"
         ));
     }
 

@@ -1,4 +1,4 @@
-package com.example.network.infrastructure.adapter.in.web;
+package com.example.network.application;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

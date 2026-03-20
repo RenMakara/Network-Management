@@ -1,5 +1,7 @@
 package com.example.network.infrastructure.adapter.in.web;
 
+import com.example.network.domain.port.out.BlocklistRepository;
+import com.example.network.domain.port.out.BodySizePolicy;
 import com.example.network.domain.port.out.GeoBlockRepository;
 import com.example.network.domain.port.out.ReputationRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +28,8 @@ public class AdminController {
 
     private final ReputationRepository reputationRepository;
     private final GeoBlockRepository geoBlockRepository;
-
+    private final BlocklistRepository blocklistRepository;
+    private final BodySizePolicy bodySizePolicy;
 
     @GetMapping("/geo")
     public ResponseEntity<Map<String, Object>> geo() {
@@ -51,18 +54,18 @@ public class AdminController {
                         "redisKey", "nm:ddos:reputation",
                         "count",    reputationRepository.getAll().size(),
                         "ips",      reputationRepository.getAll()),
-//                "layer2_blocklist", Map.of(
-//                        "redisKey", "nm:ddos:blocklist",
-//                        "count",    blocklistRepository.getAll().size(),
-//                        "ips",      blocklistRepository.getAll()),
+                "layer2_blocklist", Map.of(
+                        "redisKey", "nm:ddos:blocklist",
+                        "count",    blocklistRepository.getAll().size(),
+                        "ips",      blocklistRepository.getAll()),
                 "layer3_geo", Map.of(
                         "redisKey",  "nm:ddos:geo:blocked",
                         "count",     geoBlockRepository.getAll().size(),
-                        "countries", geoBlockRepository.getAll())
-//                "layer4_bodySize", Map.of(
-//                        "redisKey", "nm:ddos:body:size:limit",
-//                        "maxBytes", bodySizePolicy.getMaxBytes(),
-//                        "maxMB",    bodySizePolicy.getMaxBytes() / 1_048_576.0)
+                        "countries", geoBlockRepository.getAll()),
+                "layer4_bodySize", Map.of(
+                        "redisKey", "nm:ddos:body:size:limit",
+                        "maxBytes", bodySizePolicy.getMaxBytes(),
+                        "maxMB",    bodySizePolicy.getMaxBytes() / 1_048_576.0)
         ));
     }
 
@@ -105,6 +108,21 @@ public class AdminController {
         ));
     }
 
+    @PostMapping("/blocklist")
+    public ResponseEntity<Map<String, String>> addBlocklist(@RequestBody Map<String, String> body) {
+        String ip = body.get("ip");
+        blocklistRepository.add(ip);
+        return ResponseEntity.ok(Map.of(
+                "action", "added", "layer", "2-blocklist", "ip", ip,
+                "effect", "Next request from this IP → HTTP 204 silent drop"));
+    }
+
+    @DeleteMapping("/blocklist/{ip}")
+    public ResponseEntity<Map<String, String>> removeBlocklist(@PathVariable String ip) {
+        blocklistRepository.remove(ip);
+        return ResponseEntity.ok(Map.of("action", "removed", "layer", "2-blocklist", "ip", ip));
+    }
+
 
 
     // Layer 3 for blocking by country code
@@ -118,9 +136,23 @@ public class AdminController {
                 "effect", "Requests from " + code + " → HTTP 403 Forbidden"));
     }
 
+    // Removing a country code from the geo block list is not supported.
+
     @DeleteMapping("/geo/{code}")
     public ResponseEntity<Map<String, String>> removeGeoBlock(@PathVariable String code) {
         geoBlockRepository.remove(code);
         return ResponseEntity.ok(Map.of("action", "removed", "layer", "3-geo", "countryCode", code));
+    }
+
+
+    @PatchMapping("/body-size")
+    public ResponseEntity<Map<String, Object>> updateBodySize(@RequestBody Map<String, Long> body) {
+        long bytes = body.getOrDefault("bytes", 1_048_576L);
+        bodySizePolicy.setMaxBytes(bytes);
+        return ResponseEntity.ok(Map.of(
+                "action",  "updated", "layer", "4-body-size",
+                "bytes",   bytes,
+                "mb",      bytes / 1_048_576.0,
+                "effect",  "Requests with Content-Length > " + bytes + " → HTTP 413"));
     }
 }

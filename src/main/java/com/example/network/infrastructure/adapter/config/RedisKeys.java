@@ -37,12 +37,12 @@ public final class RedisKeys {
      * Type: SET  TTL: none
      */
     public static final String DDOS_GEO_BLOCKED = "nm:ddos:geo:blocked";
-//
-//    /**
-//     * Layer 4 — Request body size limit
-//     * Redis STRING storing the max allowed Content-Length in bytes.
-//     * Default: 1,048,576 (1MB). Operator can change at runtime.
-//     * Type: STRING  TTL: none
-//     */
-//    public static final String DDOS_BODY_SIZE_LIMIT = "nm:ddos:body:size:limit";
+
+    /**
+     * Layer 4 — Request body size limit
+     * Redis STRING storing the max allowed Content-Length in bytes.
+     * Default: 1,048,576 (1MB). Operator can change at runtime.
+     * Type: STRING  TTL: none
+     */
+    public static final String DDOS_BODY_SIZE_LIMIT = "nm:ddos:body:size:limit";
 }

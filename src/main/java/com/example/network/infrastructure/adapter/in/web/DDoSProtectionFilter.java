@@ -1,9 +1,12 @@
 package com.example.network.infrastructure.adapter.in.web;
 
 
+import com.example.network.application.GeoIpService;
 import com.example.network.domain.model.ReputationCheckResult;
 import com.example.network.domain.model.VisitorIp;
 import com.example.network.domain.port.in.CheckReputationUseCase;
+import com.example.network.domain.port.out.BlocklistRepository;
+import com.example.network.domain.port.out.BodySizePolicy;
 import com.example.network.domain.port.out.GeoBlockRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -42,7 +45,10 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
 
     private final CheckReputationUseCase checkReputationUseCase;
     private final GeoBlockRepository geoBlockRepository;
-    private final GeoIpService           geoIpService;
+    private final GeoIpService geoIpService;
+    private final BlocklistRepository blocklistRepository;
+    private final BodySizePolicy bodySizePolicy;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -54,16 +60,18 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
         String rawIp = extractIp(request);
         VisitorIp ip = VisitorIp.of(rawIp);
 
-        // ── Step 2: Layer 1 — IP Reputation check ─────────────────────────
-        // Redis SISMEMBER nm:ddos:reputation {ip} — ~0.3ms
-        ReputationCheckResult result = checkReputationUseCase.check(ip);
+        // Layer 1 — IP Reputation
+        if (checkReputationUseCase.check(ip).isMalicious()) {
+            log.warn("[DDoS-L1] BLOCKED ip={} reputation", ip);
+            silentDrop(response);
+            return;
+        }
 
-        if (result.isMalicious()) {
-            // Silent drop — 204 No Content
-            // Attacker sees nothing. No error message. No hint that they are blocked.
-            log.warn("[DDoS-Layer1] BLOCKED ip={} — reputation match — silent drop", ip);
-            response.setStatus(HttpServletResponse.SC_NO_CONTENT); // 204
-            return; // stop here — do NOT call chain.doFilter()
+        // Layer 2 — IP Blocklist
+        if (blocklistRepository.contains(rawIp)) {
+            log.warn("[DDoS-L2] BLOCKED ip={} blocklist", ip);
+            silentDrop(response);
+            return;
         }
 
         // Layer 3 — GeoBlocker
@@ -74,8 +82,15 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
             return;
         }
 
-        // ── All checks passed — continue to next filter ────────────────────
-        log.debug("[DDoS-Layer1] PASS ip={}", ip);
+        // Layer 4 — Body Size
+        long contentLength = request.getContentLengthLong();
+        if (contentLength > bodySizePolicy.getMaxBytes()) {
+            log.warn("[DDoS-L4] BLOCKED ip={} size={} limit={}", ip, contentLength, bodySizePolicy.getMaxBytes());
+            payloadTooLarge(response);
+            return;
+        }
+
+        log.debug("[DDoS] PASS ip={} country={}", ip, country.orElse("unknown"));
         chain.doFilter(request, response);
     }
 
@@ -109,5 +124,11 @@ public class DDoSProtectionFilter extends OncePerRequestFilter {
 
     private void silentDrop(HttpServletResponse r) throws IOException {
         r.setStatus(HttpServletResponse.SC_NO_CONTENT); // 204
+    }
+
+    private void payloadTooLarge(HttpServletResponse r) throws IOException {
+        r.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE); // 413
+        r.setContentType("application/json");
+        r.getWriter().write("{\"blocked\":true,\"reason\":\"body_too_large\"}");
     }
 }
