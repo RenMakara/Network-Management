@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: network-management
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # JDK 21 virtual threads — makes blocking Redis calls scale like reactive
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    io.stadoor: DEBUG
